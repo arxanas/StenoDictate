@@ -6,148 +6,235 @@ slow down the text to the point of unintelligibility.
 
 Human dictators will speak at a natural pace, but pause in between words as
 necessary to reach the given word rate. This module tries to approximate that
-by starting and stopping the text-to-speech engine to pause between words.
+by pausing the text-to-speech engine between words.
 """
+import logging
 import sys
+import threading
 import time
 
 import pyttsx
 from textstat.textstat import textstat
 
-MIN_RATE = 100
-"""The minimum word rate to actually speak at."""
+SLOW_DICTATION_RATE = 260
+"""The speed at which to dictate individual words in slow dictation."""
+
+FAST_DICTATION_CUTOFF = 140
+"""The speed, in wpm, at which to stop pronouncing words individually."""
 
 NUM_WORDS_PER_SYLLABLE = 1.0 / 1.44
 """This number was derived from a brochure about the EV360 software."""
 
+PUNCTUATION_PAUSES = {
+    ".": 1.0,
+    "?": 1.0,
+    "!": 1.0,
+    ";": 1.0,
+    ":": 1.0,
+    ",": 0.75,
+}
+"""The fraction of a word-length to pause after punctuation."""
+
+DEFAULT_RATE = 180
+"""The word rate to dictate at, if no rate is given.
+
+This only applies when the module is invoked as a script.
+"""
+
 
 def dictate(text, rate):
-    """Dictate text at the given rate, pausing between words as necessary.
+    """Dictate text at the given rate.
+
+    If the rate is too slow, the dictator will pause between words to preserve
+    intelligibility.
 
     :param str text: The text to dictate.
     :param int rate: A word rate, in words per minute.
     """
     text = text.strip()
-    start_time = time.time()
 
     if rate <= 0:
         raise ValueError("Word rate must be positive!")
+    if not text:
+        raise ValueError("Must have at least one word to dictate!")
 
-    class outer:
-        """Dumb hack because Python sucks.
+    if rate >= FAST_DICTATION_CUTOFF:
+        _dictate_fast(text, rate)
+    else:
+        _dictate_slow(text, rate)
 
-        See http://stackoverflow.com/q/3190706/344643.
-        """
 
-        location = 0
-        """The location (as an index) we're at in the overall text.
+def _dictate_slow(text, rate):
+    """Dictate text slowly, with pauses between words.
 
-        This is calculated and updated as we continue reading through the
-        words.
-        """
+    The actual speech will be spoken at a much faster rate, but there will be a
+    pause between each word so that the user can stroke it.
+    """
+    words = text.split()
+    word_timings = list(_schedule_words(text, rate))
 
-        base_location = 0
-        """The location from which we resumed talking.
+    # Engine init takes about a second to start up, so make sure to only start
+    # recording the time after that.
+    engine = pyttsx.init()
+    start_time = time.time()
 
-        When the engine gives us parameters in the callback, they're relative
-        to the text that we provided the engine. Since the text was created by
-        slicing the words we've already spoken off the original text, the
-        offsets that it provides as parameters will be relative to that
-        shorter, sliced text, and not the original text.
+    lock = threading.Lock()
+    stop_flag = threading.Event()
 
-        So whenever we stop talking, we store the "base location", which is
-        where we're about to resume the next part of the text. Then, given the
-        offsets as parameters, we can calculate our actual location in the
-        text.
-        """
+    class outer(object):
+        num_pending_words = 0
+        num_ticks_of_lag = 0
 
-        previous_word = None
-        previous_words = []
+        previous_location = 0
+        """Used to determine when a word has finished being spoken."""
 
-        done_dictating = False
+        current_word = 0
+        """The index of the word currently being spoken."""
 
-    def word_rate_so_far():
-        current_time = time.time()
-        time_elapsed = current_time - start_time
-        num_minutes_so_far = time_elapsed / 60.0
+    def get_timestamp():
+        """Get the number of seconds since we started dictation."""
+        return time.time() - start_time
 
-        if not num_minutes_so_far:
-            # If in the unlikely event the clock time hasn't changed between
-            # the time we set `start_time` and the time that we first ran this
-            # function, avoid having a division by zero error below. I'm not
-            # sure that this can actually happen on a real system, but it
-            # doesn't hurt.
-            return
+    def say_words():
+        for i, word in enumerate(words):
+            with lock:
+                outer.current_word = i
+                if stop_flag.is_set():
+                    return
 
-        assert all(word for word in outer.previous_words)
-        num_syllables_so_far = sum(textstat.syllable_count(word)
-                                   for word in outer.previous_words)
+                # Determine the pause we need for the next word.
+                try:
+                    scheduled_time = word_timings[i + 1]
+                except IndexError:
+                    scheduled_time = 0
 
-        num_words_so_far = num_syllables_so_far * NUM_WORDS_PER_SYLLABLE
-        return num_words_so_far / num_minutes_so_far
+                logging.debug("Saying word: {}".format(word))
+                outer.num_pending_words += 1
 
-    def register_word_spoken(location, length):
-        # On the first invocation, we don't have a previous word.
-        if outer.previous_word is not None:
-            # Don't add punctation, spacing, etc.
-            if any(c.isalpha() for c in outer.previous_word):
-                outer.previous_words.append(outer.previous_word)
+            if i < len(words) - 1:
+                engine.say(word)
+            else:
+                engine.say(word, "final")
 
-        location += outer.base_location
-        outer.previous_word = text[location:location + length]
-
-    def pause_if_necessary(location, length):
-        outer.location = outer.base_location + location
-
-        # `word_rate_so_far` looks at the current clock time, so eventually
-        # we should resume speaking, when enough time has elapsed that our
-        # word rate is suitably low.
-        #
-        # Couldn't we determine exactly how long we actually have to sleep
-        # in order to fall under the desired word rate? Only if you are
-        # less lazy of an engineer than I am.
-        while word_rate_so_far() > rate:
-            if engine.isBusy():
-                # Let the engine finish the syllable it's on. Not exactly
-                # foolproof.
-                time.sleep(0.1)
-                engine.stop()
-            time.sleep(0.01)
+            if scheduled_time:
+                pause_time = scheduled_time - get_timestamp()
+                if pause_time > 0:
+                    stop_flag.wait(pause_time)
 
     def on_word(name, location, length):
-        try:
-            register_word_spoken(location, length)
-            pause_if_necessary(location, length)
-        except Exception:
-            # Exceptions that occur in a callback seem to be swallowed
-            # silently, so manually report any exceptions.
-            import traceback
-            traceback.print_exc()
+        """If the speech engine is falling behind, give it extra time."""
+        with lock:
+            # We can't directly determine if this is a new word or not, so
+            # determine it by seeing if we've started the beginning of a
+            # different word.
+            #
+            # One approach that doesn't work is checking if the location is
+            # zero, because punctation like quotation marks aren't pronounced.
+            # But those punctuation marks might be at the beginning of the
+            # utterance, so the engine would start at a location greater than
+            # zero.
+            old_previous_location = outer.previous_location
+            outer.previous_location = location
+            if location > old_previous_location:
+                return
+
+            outer.num_pending_words -= 1
+            if outer.num_pending_words:
+                outer.num_ticks_of_lag += 1
+                logging.debug("Num pending words: {}"
+                              .format(outer.num_pending_words))
+            else:
+                outer.num_ticks_of_lag = 0
+
+            # If we've had pending words for the last few ticks, give the
+            # speech engine a rest and allow it to say words a little bit
+            # later.
+            if outer.num_ticks_of_lag >= 3:
+                current_time = get_timestamp()
+                next_word_time = word_timings[outer.current_word]
+                time_difference = current_time - next_word_time
+                time_difference += 0.5
+                if time_difference <= 0:
+                    return
+
+                word_timings[:] = [round(timing + time_difference, 2)
+                                   for timing in word_timings]
+                logging.debug("Giving speech engine {:.2f} seconds"
+                              .format(time_difference))
+                logging.debug("Current time is {:.2f}; next few times are {}"
+                              .format(
+                    current_time,
+                    word_timings[outer.current_word:outer.current_word + 5]
+                ))
+
+    def on_end(name, completed):
+        if completed and name == "final":
             engine.stop()
+            engine.endLoop()
 
-    def on_finish(name, completed):
-        # If the utterance stopped because the engine was interrupted (that is,
-        # `completed == False`), don't actually stop the dictation loop.
-        if completed:
-            outer.done_dictating = True
-
-    engine = pyttsx.init()
-    engine.setProperty("rate", max(rate, MIN_RATE))
+    engine.setProperty("rate", SLOW_DICTATION_RATE)
     engine.connect("started-word", on_word)
-    engine.connect("finished-utterance", on_finish)
+    engine.connect("finished-utterance", on_end)
+    speech_thread = threading.Thread(target=say_words)
+    speech_thread.start()
+    try:
+        engine.startLoop()
+    except KeyboardInterrupt:
+        stop_flag.set()
+        speech_thread.join()
+    finally:
+        try:
+            engine.endLoop()
+        except RuntimeError:
+            # It was already ended, nothing to do here.
+            pass
 
-    while not outer.done_dictating:
-        # Resume (or start, it doesn't matter) our speech from the point we
-        # used to be at.
-        outer.previous_word = None
-        outer.base_location = outer.location
-        engine.say(text[outer.location:])
-        engine.runAndWait()
+
+def _dictate_fast(text, rate):
+    """Dictate the text, without doing anything special."""
+    engine = pyttsx.init()
+    engine.setProperty("rate", rate)
+    engine.say(text)
+    engine.runAndWait()
+
+
+def _schedule_words(text, rate):
+    """Determine the time at which to speak each word for slow dictation.
+
+    :returns list: A list of floats, starting from 0 and monotonically
+    increasing, corresponding to the time at which to say each word.
+    """
+    num_syllables = textstat.syllable_count(text)
+    total_dictation_time = num_syllables * NUM_WORDS_PER_SYLLABLE / rate
+    total_dictation_seconds = total_dictation_time * 60.0
+
+    words = text.split()
+    time_per_word = total_dictation_seconds / len(text.split())
+
+    current_time = 0.0
+    for word in words:
+        # There's no technical reason to round, it's just nice to not have to
+        # worry about making a pretty string representation of the list of
+        # timings.
+        yield round(current_time, 2)
+
+        word_length = time_per_word
+        punctuation_pause = PUNCTUATION_PAUSES.get(word[-1])
+        if punctuation_pause:
+            word_length += time_per_word * punctuation_pause
+        current_time += word_length
 
 
 def main():
+    logging.basicConfig(level=logging.DEBUG)
     text = sys.stdin.read()
-    dictate(text, rate=40)
+
+    rate = DEFAULT_RATE
+    for i, j in zip(sys.argv, sys.argv[1:]):
+        if i == "-r":
+            rate = int(j)
+
+    dictate(text, rate=rate)
 
 if __name__ == "__main__":
     main()
