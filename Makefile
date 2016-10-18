@@ -17,3 +17,11 @@ build_ui:
 .PHONY: launch
 launch: build_ui
 	python -m stenodictate
+
+.PHONY: test
+test:
+	py.test
+
+.PHONY: lint
+lint:
+	flake8 stenodictate test
