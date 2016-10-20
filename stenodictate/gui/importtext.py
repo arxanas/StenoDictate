@@ -1,7 +1,7 @@
 """Let the user select a dictation text to import."""
 import os.path
 
-from PyQt5.QtWidgets import (QDialog, QFileDialog, QMessageBox)
+from PyQt5.QtWidgets import QDialog, QFileDialog, QMessageBox
 
 from stenodictate.gui.importtext_ui import Ui_ImportTextDialog
 
