@@ -1,3 +1,5 @@
+appdirs==1.4.0
+py==1.4.31
 pyobjc==3.1.1
 pyttsx==1.1
 textstat==0.3.1

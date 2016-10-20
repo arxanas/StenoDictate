@@ -24,4 +24,5 @@ test:
 
 .PHONY: lint
 lint:
-	flake8 stenodictate test
+	flake8 stenodictate
+	flake8 --ignore D test
