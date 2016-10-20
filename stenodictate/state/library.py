@@ -8,6 +8,8 @@ import collections
 import shutil
 
 import py.path
+from PyQt5.QtCore import pyqtSignal, QObject, QVariant
+from PyQt5.QtGui import QStandardItem, QStandardItemModel
 
 from stenodictate.state import app_state
 
@@ -89,6 +91,7 @@ class Library(object):
 
             text = DictationText(title=title, path=str(target_path))
             state["texts"].append(text)
+            return text
         finally:
             # Make sure to increment the next file ID, just in case the file
             # was partially written but threw an Error, or something like that.
@@ -100,3 +103,44 @@ class Library(object):
         :returns list: A list of DictationText objects.
         """
         return self._app_state["library"]["texts"]
+
+
+class LibraryModel(QObject):
+    """A QStandardModel wrapper.
+
+    :ivar QStandardModel model: The model containing the texts.
+    """
+
+    text_added = pyqtSignal(DictationText)
+    """Should be emitted when a text is added to the library."""
+
+    @property
+    def qt_model(self):
+        """Get the underlying QStandardItemModel."""
+        return self._model
+
+    def __init__(self, library, list_view):
+        """Initialize the model to contain the texts in the library."""
+        super(LibraryModel, self).__init__()
+        self._library = library
+        self._list_view = list_view
+
+        self._model = QStandardItemModel()
+        self._populate()
+
+        self.text_added.connect(self._on_text_added)
+
+    def _populate(self):
+        for text in self._library.get_texts():
+            self._model.appendRow(self._create_item(text))
+
+    def _create_item(self, text):
+        item = QStandardItem(text.title)
+        item.setEditable(False)
+        item.setData(QVariant(text))
+        return item
+
+    def _on_text_added(self, text):
+        item = self._create_item(text)
+        self._model.appendRow(item)
+        self._list_view.setCurrentIndex(self._model.indexFromItem(item))

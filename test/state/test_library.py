@@ -1,7 +1,7 @@
 import py.path
 import pytest
 
-from stenodictate.state import Library
+from stenodictate.state.library import Library
 
 
 @pytest.fixture

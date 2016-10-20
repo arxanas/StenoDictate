@@ -9,6 +9,6 @@ def test_importtext(app):
     dialog = ImportTextDialog()
     dialog.show()
 
-    QTest.keyClicks(dialog.title_lineedit, "foo")
+    QTest.keyClicks(dialog.titleLineEdit, "foo")
     dialog._file_path = "foo"
     QTest.mouseClick(dialog.buttons.button(QDialogButtonBox.Ok), Qt.LeftButton)

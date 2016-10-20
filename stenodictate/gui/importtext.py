@@ -17,7 +17,7 @@ class ImportTextDialog(QDialog, Ui_ImportTextDialog):
     @property
     def title(self):
         """The title of the dictation text."""
-        return self.title_lineedit.text().strip()
+        return self.titleLineEdit.text().strip()
 
     def __init__(self):
         """Initialize the dialog."""
@@ -26,7 +26,7 @@ class ImportTextDialog(QDialog, Ui_ImportTextDialog):
 
         self._file_path = None
 
-        self.select_file.clicked.connect(self._set_file)
+        self.selectFileButton.clicked.connect(self._set_file)
         self.buttons.accepted.connect(self._validate)
 
     def _set_file(self):
