@@ -27,8 +27,8 @@ def app():
 
     def quit_app():
         if not app_finished.wait(_UI_TIMEOUT):
-            app.exit(1)
             outer.timed_out = True
+            app.exit(1)
 
     timeout = threading.Thread(target=quit_app)
     timeout.start()

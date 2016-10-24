@@ -125,7 +125,7 @@ class LibraryModel(QObject):
         self._library = library
         self._list_view = list_view
 
-        self._model = QStandardItemModel()
+        self._model = QStandardItemModel(self._list_view)
         self._populate()
 
         self.text_added.connect(self._on_text_added)

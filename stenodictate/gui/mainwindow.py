@@ -6,6 +6,7 @@ from PyQt5.QtWidgets import QDialog, QMainWindow, QMessageBox
 
 from stenodictate.gui.importtext import ImportTextDialog
 from stenodictate.gui.mainwindow_ui import Ui_MainWindow
+from stenodictate.qdictate import Dictator
 from stenodictate.state.library import Library, LibraryModel
 
 
@@ -21,12 +22,20 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self._library_model = LibraryModel(self._library, self.libraryListView)
         self.libraryListView.setModel(self._library_model.qt_model)
 
-        self._dictation_document = QTextDocument(self.dictationTextEdit)
-        self.dictationTextEdit.setDocument(self._dictation_document)
-
         self.actionImport.triggered.connect(self._import_text)
         self.libraryListView.selectionModel() \
             .selectionChanged.connect(self._text_changed)
+
+        self._dictation_document = QTextDocument(self.dictationTextEdit)
+        self.dictationTextEdit.setDocument(self._dictation_document)
+
+        self._dictator = Dictator(parent=self)
+        self.startDictationButton.clicked.connect(self._start_dictation)
+
+    def closeEvent(self, event):
+        """Stop the dictation if it's still in progress."""
+        if self._dictator:
+            self._dictator.stop()
 
     def _import_text(self):
         """Import a (in a .txt file) into the user's library."""
@@ -55,3 +64,35 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         index = selection.indexes()[0]
         text = self._library_model.qt_model.itemFromIndex(index).data()
         self._dictation_document.setPlainText(text.get_text())
+
+    def _start_dictation(self):
+        current_text = self._get_current_text()
+        if not current_text:
+            QMessageBox.critical(
+                self,
+                "Cannot dictate",
+                "Select a text from the left to dictate.",
+            )
+            return
+
+        word_rate = self.wpmSpinBox.value()
+
+        self.startDictationButton.setDisabled(True)
+        self.startDictationButton.setText("Starting...")
+
+        def started_dictation():
+            # TODO: Actually do something when the user presses this new
+            # button.
+            self.startDictationButton.setText("Started")
+
+        self._dictator.started_dictation.connect(started_dictation)
+        self._dictator.start(text=current_text, rate=word_rate)
+
+    def _get_current_text(self):
+        try:
+            index = self.libraryListView.selectionModel().selectedIndexes()[0]
+        except IndexError:
+            return None
+
+        data = self._library_model.qt_model.itemFromIndex(index).data()
+        return data.get_text()
