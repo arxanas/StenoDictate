@@ -19,8 +19,8 @@ launch: build_ui
 	python -m stenodictate
 
 .PHONY: test
-test:
-	py.test
+test: build_ui
+	python -m pytest
 
 .PHONY: lint
 lint:

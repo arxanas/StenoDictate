@@ -1,0 +1,5 @@
+# It looks like you can't install from git repositories directly using just
+# setuptools. There is a --process-dependency-links option that is supposed to
+# force setuptools to use custom dependency locations, but I didn't get it
+# working.
+git+https://github.com/arxanas/pyttsx.git

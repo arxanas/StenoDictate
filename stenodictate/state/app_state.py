@@ -5,7 +5,7 @@ distinct part of the application stores its data in its own key, and maintains
 that key's schema. The various parts of the application thus wrap this class in
 some way.
 """
-import cPickle as pickle
+import pickle
 
 import appdirs
 import py.path
@@ -95,7 +95,7 @@ class State(object):
         if not key_file.check(file=1):
             return None
 
-        with key_file.open() as f:
+        with key_file.open("rb") as f:
             data = pickle.load(f)
             return data["data"]
 
@@ -109,7 +109,7 @@ class State(object):
             self._init()
 
         key_file = self._get_file_for_key(key)
-        with key_file.open("w", ensure=True) as f:
+        with key_file.open("wb", ensure=True) as f:
             data = {
                 "version": version,
                 "data": value,
