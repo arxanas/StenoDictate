@@ -36,8 +36,9 @@ def _get_requirements():
     ]
 
     if "win32" in sys.platform:
-        # Should probably include PyWin32.
-        raise NotImplementedError()
+        requirements.extend([
+            "pypiwin32>=219",
+        ])
     elif "darwin" in sys.platform:
         requirements.extend([
             "pyobjc>=3.1.1",
