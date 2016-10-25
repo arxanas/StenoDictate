@@ -9,7 +9,6 @@ necessary to reach the given word rate. This module tries to approximate that
 by pausing the text-to-speech engine between words.
 """
 import logging
-import sys
 import threading
 import time
 
@@ -161,11 +160,10 @@ def _dictate_slow(text, rate):
                                    for timing in word_timings]
                 logging.debug("Giving speech engine {:.2f} seconds"
                               .format(time_difference))
-                logging.debug("Current time is {:.2f}; next few times are {}"
-                              .format(
-                    current_time,
+                next_times = \
                     word_timings[outer.current_word:outer.current_word + 5]
-                ))
+                logging.debug("Current time is {:.2f}; next few times are {}"
+                              .format(current_time, next_times))
 
     def on_end(name, completed):
         if completed and name == "final":
@@ -223,18 +221,3 @@ def _schedule_words(text, rate):
         if punctuation_pause:
             word_length += time_per_word * punctuation_pause
         current_time += word_length
-
-
-def main():
-    logging.basicConfig(level=logging.DEBUG)
-    text = sys.stdin.read()
-
-    rate = DEFAULT_RATE
-    for i, j in zip(sys.argv, sys.argv[1:]):
-        if i == "-r":
-            rate = int(j)
-
-    dictate(text, rate=rate)
-
-if __name__ == "__main__":
-    main()

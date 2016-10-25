@@ -24,15 +24,21 @@ def _get_version():
 
 def _get_requirements():
     requirements = [
+        "PyQt5==5.7",
         "appdirs>=1.4.0",
         "py>=1.4.31",
-        "pyttsx>=1.1",
+
+        # Technically, textstat doesn't support Python 3. In fact, it returns
+        # different results in its tests between Python 2 and 3 for most of it
+        # sfunctions functions. But the results are consistent for the syllable
+        # count function, which is the one we care about.
         "textstat>=0.3.1",
     ]
 
     if "win32" in sys.platform:
-        # Should probably include PyWin32.
-        raise NotImplementedError()
+        requirements.extend([
+            "pypiwin32>=219",
+        ])
     elif "darwin" in sys.platform:
         requirements.extend([
             "pyobjc>=3.1.1",

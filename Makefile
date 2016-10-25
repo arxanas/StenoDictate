@@ -19,9 +19,10 @@ launch: build_ui
 	python -m stenodictate
 
 .PHONY: test
-test:
-	py.test
+test: build_ui
+	python -m pytest
 
 .PHONY: lint
 lint:
-	flake8 stenodictate test
+	flake8 stenodictate
+	flake8 --ignore D test
